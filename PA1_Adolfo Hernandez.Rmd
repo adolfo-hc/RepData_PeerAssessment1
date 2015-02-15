@@ -1,0 +1,118 @@
+---
+title: "Reproducible Research: Peer Assessment 1"
+author: "Adolfo Hernandez"
+output: 
+  html_document:
+    keep_md: true
+---
+
+###Requirements
+This documents requires the ggplot2 package, please download it and load it in R before runing the code below.
+```{r}
+library(ggplot2)
+```
+## Loading and preprocessing the data
+Please replace the file path below in the read.csv() function with the file path on your computer:
+```{r}
+active <- read.csv("C:\\Users\\Adolfo\\Documents\\Coursera\\The Data Science Specialization\\5. Reproducible Research\\activity.csv")
+str(active)
+summary(active)
+```
+## What is mean total number of steps taken per day?
+In order to know the total number of steps taken each day, first we need to rearrange our data to get the information we want:
+```{r}
+stepsbyday <- aggregate(steps ~ date, active, FUN = sum)
+head(stepsbyday)
+summary(stepsbyday)
+```
+The mean and the median are almost identical, this suggests that our variable distribution is fairly simmetrical and normal, we can confirm this with an histogram:
+```{r}
+m <- ggplot(stepsbyday, aes(x = steps))
+m + geom_histogram(binwidth = 2000, aes(fill = ..count..)) +
+    labs(title = "Histogram of steps taken by day", x = "Steps taken by day", y = "Steps count")  
+```
+
+In our mean and median calculation code above we didn't take into account the number of **NA** values in our dataset, mainly in our **steps** variable, just for future reference, the total count of missing **steps** values are:
+```{r}
+summary(active$steps)
+```
+Which means about that ```r round((sum(is.na(active$steps)) / length(active$steps))*100, 1)``` percent of our data is missing.  
+
+## What is the average daily activity pattern?
+In order to get a better idea of the daily activity (steps taken) we graph a time series plot of the 5-minute interval and the average number of steps taken, averaged across all days, at this time ignoring the NA values:
+```{r fig.width = 10}
+fivemin <- aggregate(steps ~ interval, active, FUN = mean)
+head(fivemin)
+#xaxis <- rep(1:288, 2) #This variable is just for x-axis labeling purposes
+xlabels <- as.character(seq(0, 24, 1)) #This variable is just for x-axis labeling purposes
+q <- qplot(data = fivemin, x = 1:288, y = steps, geom = 'line')
+q + scale_x_continuous(breaks = seq(0, 288, 12), labels = xlabels) + 
+    theme(axis.text.x = element_text(angle = 90)) +
+    labs(title = "Avg. steps taken by daytime period", x = "Time interval (24hrs)", y = "Avg. step count") + annotate("rect", xmin = 102, xmax = 108.5, ymin = 0, ymax = 215, alpha = .3, fill = "yellow")
+```
+The time period with highest activity was between **8:30 and 9:00am**, the exact interval was at **8:35am with 206 steps**:
+```{r}
+fivemin[fivemin$steps == max(fivemin$steps), ]
+```
+## Imputing missing values
+As we established before the total number of NA values is 2,304:
+```{r}
+sum(is.na(active))
+```
+In order to replace those missing values the mean value of each 5-min interval is going to be used accordingly in our dataset but first we preserve a copy of our original information then we replace all missing values:
+```{r}
+activefull <- active #A copy of our original dataset
+activefull$steps <- sapply(1:length(active$steps),
+                       function(i) ifelse(is.na(active$steps[i]),
+                                          fivemin$steps[fivemin$interval == active[i,3]],
+                                          active$steps[i]))
+head(active) #Original dataset with missing NAs
+sum(is.na(active))
+head(activefull) #New dataset with no NAs
+sum(is.na(activefull))
+```
+As we used the 5min intervals steps average for each missing value the mean and median in our new dataset will remain almost the same as our original dataset; we use the mean values so adding all these means won't change the overall distribution as we can see below:
+```{r}
+stepsbydayfull <- aggregate(steps ~ date, activefull, sum)
+summary(stepsbydayfull)
+z <- ggplot(stepsbydayfull, aes(x = steps))
+z + geom_histogram(binwidth = 2000, aes(fill = ..count..)) +
+    labs(title = "Histogram of steps taken by day\nNew dataset no NAs", x = "Steps taken by day", y = "Steps count") + scale_fill_gradient("Count", low = "green", high = "red")
+```
+
+Dataset       | Mean
+------------- | -------------
+active (NAs)  | ```r round(mean(stepsbyday$steps, na.rm = TRUE), digits = 0)```
+activefull (no NAs)   | ```r round(mean(stepsbydayfull$steps, na.rm = TRUE), digits = 0)``` 
+
+## Are there differences in activity patterns between weekdays and weekends?
+To determine if the same activity pattern remains through out the weekend first we have to do some arrangements to our new dataset:
+```{r}
+daynumber <- as.POSIXlt(as.Date(activefull$date))$wday #Week day number
+activefull$weekday[daynumber > 0 & daynumber < 6] <- 'weekday'
+activefull$weekday[daynumber == 0 | daynumber == 6] <- 'weekend'
+
+avgperw <- aggregate(steps ~ interval + weekday, activefull, mean)
+head(avgperw)
+tail(avgperw)
+```
+Now we can plot our data to compare weekdays vs. weekend:
+```{r}
+xaxis <- rep(1:288, 2)
+xlabels <- as.character(seq(0, 24, 1))
+p <- qplot(x = xaxis, y = steps, data = avgperw, geom = 'line',
+           facets = weekday ~ .)
+p + scale_x_continuous(breaks = seq(0, 288, 12), labels = xlabels) + 
+    theme(axis.text.x = element_text(angle = 90)) +
+    labs(title = "Avg. step count by daytime period\nWeekdays vs. Weekend", x = "Time interval (24hrs)", y = "Avg. step count")
+```
+
+Analyzing our weekdays vs. weekend plot we can notice the following:  
+<ul>
+<li>The 50 steps average mark is reached at almost 6am during weekdays vs. past 8am on weekends.</li>
+<li>The biggest step count peak is 166 steps on weekends vs. 206 on weekdays.</li> 
+<li>There are 4 different peaks (time periods) above 125 steps on weekends vs. just one on weekdays.</li>
+<li>Activity seems to diminish around 8pm on weekdays vs. 9pm on weekends, below 50 steps count.</li>
+</ul>
+## Conclusion
+Our study shows that there are different patterns of activity through out the day and during weekdays vs. weekends. Such differences could be due to the subject daily routines like exercise, work, errands, etc.
